@@ -1,0 +1,133 @@
+name: Generate Power BI Documentation
+
+on:
+  push:
+    paths:
+      # PBIX files
+      - '**/*.pbix'
+      # PBIP / TMDL files (text-based, git-friendly)
+      - '**/*.pbip'
+      - '**/*.SemanticModel/**'
+      - '**/*.Dataset/**'
+      - '**/definition/**/*.tmdl'
+      - '**/model.bim'
+      # Workflow itself
+      - '.github/workflows/generate-wiki.yml'
+  workflow_dispatch:
+    inputs:
+      input_path:
+        description: 'Path to PBIX file, PBIP file, or semantic model directory'
+        required: false
+        default: 'models/'
+      ai_descriptions:
+        description: 'Generate AI descriptions for measures'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  generate-docs:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          git clone https://github.com/jonaolden/pbixray-mcp-server.git
+          pip install -e ./pbixray-mcp-server
+          pip install -r requirements.txt
+
+      - name: Find Power BI files
+        id: find-input
+        run: |
+          INPUT_PATH="${{ github.event.inputs.input_path || 'models/' }}"
+
+          # Check for explicit input path first
+          if [ -f "$INPUT_PATH" ]; then
+            echo "path=$INPUT_PATH" >> $GITHUB_OUTPUT
+            echo "Found input file: $INPUT_PATH"
+            exit 0
+          fi
+
+          if [ -d "$INPUT_PATH" ]; then
+            echo "path=$INPUT_PATH" >> $GITHUB_OUTPUT
+            echo "Found input directory: $INPUT_PATH"
+            exit 0
+          fi
+
+          # Auto-detect: search for PBIP projects first (preferred), then PBIX
+          pbip=$(find . -name "*.pbip" -type f | head -1)
+          if [ -n "$pbip" ]; then
+            echo "path=$pbip" >> $GITHUB_OUTPUT
+            echo "Auto-detected PBIP: $pbip"
+            exit 0
+          fi
+
+          # Look for .SemanticModel directories
+          sm_dir=$(find . -type d -name "*.SemanticModel" | head -1)
+          if [ -n "$sm_dir" ]; then
+            echo "path=$sm_dir" >> $GITHUB_OUTPUT
+            echo "Auto-detected SemanticModel: $sm_dir"
+            exit 0
+          fi
+
+          # Fall back to PBIX files
+          pbix=$(find . -name "*.pbix" -type f | head -1)
+          if [ -n "$pbix" ]; then
+            echo "path=$pbix" >> $GITHUB_OUTPUT
+            echo "Auto-detected PBIX: $pbix"
+            exit 0
+          fi
+
+          echo "No Power BI files found"
+          exit 1
+
+      - name: Generate documentation
+        run: |
+          AI_FLAG=""
+          if [ "${{ github.event.inputs.ai_descriptions }}" = "true" ]; then
+            AI_FLAG="--ai-descriptions"
+          fi
+
+          python generate_wiki.py \
+            "${{ steps.find-input.outputs.path }}" \
+            -o ./wiki-output \
+            $AI_FLAG \
+            -v
+
+      - name: Checkout wiki
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}.wiki
+          path: wiki
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update wiki content
+        run: |
+          find wiki -maxdepth 1 -type f -name "*.md" -delete
+          cp wiki-output/*.md wiki/
+
+      - name: Commit and push wiki
+        run: |
+          cd wiki
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --staged --quiet || git commit -m "docs: update Power BI documentation from ${{ github.sha }}"
+          git push

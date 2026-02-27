@@ -1,185 +1,178 @@
 # Power BI Auto-Documentation
 
-Automatically generate GitHub Wiki documentation from Power BI PBIX files. Every table, measure, relationship, and data source is extracted and published as navigable Markdown pages with Mermaid ER diagrams.
+Automatically generate wiki documentation from your Power BI files. Tables, measures, relationships, data sources, and interactive diagrams — all published to GitHub or Azure DevOps Wiki with one command.
 
-## How It Works
+## What You Get
 
-```
-PBIX File → PBIXRay MCP Server → Python Client → Markdown + Mermaid → GitHub Wiki
-```
+- **Full model documentation** — every table, column, measure, and relationship
+- **Interactive diagrams** — visual relationship maps rendered natively in your wiki
+- **Measure formulas** — all DAX expressions with dependency tracking
+- **Data sources** — Power Query/M expressions documented
+- **Sidebar navigation** — organized, clickable page structure
+- **AI descriptions** (optional) — plain-language explanations for your DAX measures
+- **Auto-update pipeline** (optional) — wiki regenerates whenever you push changes
 
-1. **MCP Client** connects to the PBIXRay MCP server and extracts all model metadata
-2. **Wiki Generator** transforms metadata into structured Markdown pages
-3. **GitHub Actions** automates the process on every commit
-
-## Features
-
-- Multi-page wiki: Home, per-table pages, Measures, Relationships, Data Sources
-- Mermaid ER diagrams rendered natively in GitHub Wiki
-- Measure dependency graphs (detects DAX cross-references)
-- **AI enrichment** (optional): Claude generates business-friendly descriptions for DAX measures
-- **Multi-model portal**: unified index, cross-model measure search, duplicate detection
-- Persistent caching for AI descriptions (only regenerates when DAX changes)
+Works with both **PBIP** (recommended) and **PBIX** files.
 
 ## Prerequisites
 
-- Python 3.10+
-- [PBIXRay MCP Server](https://github.com/jonaolden/pbixray-mcp-server)
-- (Optional) Anthropic API key for AI descriptions
+Before you start, make sure you have:
 
-## Installation
+| Requirement | How to get it |
+|---|---|
+| **Python 3.11+** | [python.org/downloads](https://www.python.org/downloads/) |
+| **Git** | [git-scm.com/downloads](https://git-scm.com/downloads) |
+| **Azure CLI** (for Azure DevOps) | `winget install Microsoft.AzureCLI` or [aka.ms/installazurecliwindows](https://aka.ms/installazurecliwindows) |
+| **GitHub CLI** (for GitHub) | `winget install GitHub.cli` or [cli.github.com](https://cli.github.com/) |
+| **Claude Code** (for the slash command) | See [claude.ai/claude-code](https://claude.ai/download) |
+
+You only need Azure CLI **or** GitHub CLI, depending on which platform you use.
+
+## Quick Start
+
+### 1. Clone and install
 
 ```bash
-# Clone this repo
-git clone https://github.com/your-org/powerbi-auto-documentation.git
-cd powerbi-auto-documentation
+git clone https://github.com/MathiasAgain/Power_BI_Auto_Documentation.git
+cd Power_BI_Auto_Documentation
 
-# Create virtual environment
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+# Windows:
+venv\Scripts\activate
+# macOS/Linux:
+source venv/bin/activate
 
-# Install the PBIXRay MCP server
-git clone https://github.com/jonaolden/pbixray-mcp-server.git
-pip install -e ./pbixray-mcp-server
-
-# Install dependencies
 pip install -r requirements.txt
 ```
 
-## Usage
-
-### Single Model
+### 2. Log in to your platform
 
 ```bash
-python generate_wiki.py ./models/Sales.pbix -o ./wiki-output -n "Sales Analytics"
+# Azure DevOps:
+az login
+
+# GitHub:
+gh auth login
 ```
 
-### Single Model with AI Descriptions
+A browser window opens — sign in and you're done. No tokens to create.
+
+### 3. Run the tool
+
+**Option A: Slash command (recommended)**
+
+Open Claude Code in the project folder and type:
+
+```
+/generate-wiki
+```
+
+Claude walks you through everything interactively — file selection, platform, repo creation, wiki publishing, and pipeline setup.
+
+**Option B: Streamlit app**
 
 ```bash
+streamlit run app.py
+```
+
+A web UI opens with a step-by-step guided workflow.
+
+**Option C: CLI (advanced)**
+
+```bash
+# Generate docs from a PBIP file and publish to Azure DevOps
+python generate_wiki.py "C:\path\to\project.pbip" -o wiki-output --platform azure_devops -v
+
+# Generate from PBIX and publish to GitHub
+python generate_wiki.py "C:\path\to\model.pbix" -o wiki-output --platform github -v
+```
+
+Then push to your wiki:
+
+```python
+# Azure DevOps:
+python -c "from src.utils.azure_wiki import push_to_azure_wiki; print(push_to_azure_wiki('wiki-output', 'https://dev.azure.com/org/project'))"
+
+# GitHub:
+python -c "from src.utils.git_wiki import push_to_wiki; print(push_to_wiki('wiki-output', 'https://github.com/org/repo'))"
+```
+
+## Supported Input Formats
+
+| Format | Extension | Notes |
+|---|---|---|
+| **PBIP** (recommended) | `.pbip` | Parsed directly, no extra tools needed. Save from Power BI Desktop via *File > Save as > Power BI Project* |
+| **Semantic Model** | `.SemanticModel/` | TMDL or model.bim folder — parsed directly |
+| **PBIX** | `.pbix` | Binary format — requires the PBIXRay MCP server (included) |
+
+## Supported Platforms
+
+| Platform | Wiki | Auto-update pipeline | Auth |
+|---|---|---|---|
+| **Azure DevOps** | Auto-created | Azure Pipelines (auto-created) | `az login` (no token needed) |
+| **GitHub** | Must initialize once manually | GitHub Actions | `gh auth login` (no token needed) |
+
+## AI Descriptions (Optional)
+
+The tool can generate plain-language descriptions for your DAX measures using Claude AI. This requires an API key from [console.anthropic.com](https://console.anthropic.com).
+
+```bash
+# Set the key as an environment variable:
 export ANTHROPIC_API_KEY=sk-ant-...
-python generate_wiki.py ./models/Sales.pbix -o ./wiki-output --ai-descriptions
+
+# Then add --ai-descriptions when generating:
+python generate_wiki.py "path/to/model.pbip" -o wiki-output --ai-descriptions
 ```
 
-### Multiple Models (Unified Portal)
-
-```bash
-python generate_wiki_multi.py ./models/ -o ./wiki-portal --org-name "Contoso"
-```
-
-### Discover Available MCP Tools
-
-```bash
-python generate_wiki.py --discover dummy.pbix
-```
-
-## CLI Options
-
-### `generate_wiki.py` (single model)
-
-| Flag | Description |
-|------|-------------|
-| `pbix_file` | Path to the PBIX file |
-| `-o, --output` | Output directory (default: `./wiki-output`) |
-| `-n, --name` | Model display name |
-| `--server-command` | PBIXRay MCP server command |
-| `--ai-descriptions` | Enable AI measure descriptions |
-| `--ai-model` | Claude model (default: `claude-sonnet-4-20250514`) |
-| `--cache-path` | AI description cache file path |
-| `--discover` | List MCP tools and exit |
-| `-v, --verbose` | Verbose logging |
-
-### `generate_wiki_multi.py` (multi-model portal)
-
-| Flag | Description |
-|------|-------------|
-| `input_dir` | Directory containing PBIX files (recursive) |
-| `-o, --output` | Output directory (default: `./wiki-portal`) |
-| `--org-name` | Organization name for portal header |
-| `--server-command` | PBIXRay MCP server command |
-| `--ai-descriptions` | Enable AI measure descriptions |
-| `--ai-model` | Claude model |
-| `-v, --verbose` | Verbose logging |
+Or enable it interactively in the slash command or Streamlit app.
 
 ## Generated Wiki Structure
-
-### Single Model
 
 ```
 wiki-output/
 ├── Home.md              # Model overview + navigation
-├── Table-{name}.md      # One page per table (columns, measures, diagram)
-├── Measures.md          # All DAX measures with dependency graph
-├── Relationships.md     # ER diagram + relationship details
+├── Table-{name}.md      # One page per table (columns, types, measures, diagram)
+├── Measures.md          # All measures with formulas + dependency graph
+├── Relationships.md     # Full ER diagram + relationship details
 ├── Data-Sources.md      # Power Query/M expressions
-└── _Sidebar.md          # Wiki navigation
+├── _Sidebar.md          # Wiki navigation (GitHub)
+└── .order               # Page ordering (Azure DevOps)
 ```
 
-### Multi-Model Portal
+## CLI Reference
 
-```
-wiki-portal/
-├── Home.md              # Portal index with all models
-├── Measure-Index.md     # Cross-model measure search
-├── Duplicate-Report.md  # Duplicate measure detection
-├── _Sidebar.md          # Portal navigation
-├── ModelA-Home.md       # Per-model pages (prefixed)
-├── ModelA-Table-*.md
-├── ModelA-Measures.md
-└── ...
-```
+| Flag | Description |
+|---|---|
+| `pbix_file` | Path to PBIX file, PBIP file, or SemanticModel folder |
+| `-o, --output` | Output directory (default: `./wiki-output`) |
+| `-n, --name` | Model display name (default: filename) |
+| `--platform` | `github` or `azure_devops` (default: `github`) |
+| `--ai-descriptions` | Enable AI measure descriptions |
+| `--ai-model` | Claude model (default: `claude-sonnet-4-20250514`) |
+| `-v, --verbose` | Show detailed logs |
 
-## GitHub Actions
+## Troubleshooting
 
-The included workflow (`.github/workflows/generate-wiki.yml`) triggers on:
+**"Repository not found" when pushing to GitHub Wiki**
+> GitHub wikis must be initialized once manually. Go to the repo's Wiki tab and click "Create the first page" (content doesn't matter). This is a one-time GitHub limitation.
 
-- Push of any `*.pbix` file
-- Manual dispatch (workflow_dispatch)
+**"Azure login failed"**
+> Make sure Azure CLI is installed: `az --version`. If not, run `winget install Microsoft.AzureCLI` and restart your terminal.
 
-### Setup
+**"GitHub login failed"**
+> Make sure GitHub CLI is installed: `gh --version`. If not, run `winget install GitHub.cli` and restart your terminal.
 
-1. Ensure your repo has a wiki (create at least one page via the GitHub UI)
-2. Add `ANTHROPIC_API_KEY` as a repository secret (only if using AI descriptions)
-3. Place PBIX files in a `models/` directory (or adjust the workflow path)
+**Mermaid diagrams show as text**
+> Make sure you're using `--platform azure_devops` when targeting Azure DevOps. The two platforms use different diagram syntax.
 
-### Secrets
-
-| Secret | Required | Description |
-|--------|----------|-------------|
-| `ANTHROPIC_API_KEY` | Only for AI descriptions | Anthropic API key |
-
-## Project Structure
-
-```
-├── src/
-│   ├── models.py                  # Data models (Table, Measure, Relationship, etc.)
-│   ├── mcp_client/
-│   │   ├── client.py              # Base MCP protocol client
-│   │   └── pbixray_tools.py       # PBIXRay-specific tool wrappers
-│   ├── generators/
-│   │   ├── wiki_generator.py      # Single-model wiki orchestrator
-│   │   ├── multi_model.py         # Multi-model portal generator
-│   │   ├── pages.py               # Individual page generators
-│   │   └── mermaid.py             # Mermaid diagram generation
-│   ├── enrichment/
-│   │   └── ai_descriptions.py     # Claude AI description generator
-│   └── utils/
-│       └── markdown.py            # Markdown formatting helpers
-├── generate_wiki.py               # CLI: single model
-├── generate_wiki_multi.py         # CLI: multi-model portal
-├── .github/workflows/
-│   └── generate-wiki.yml          # GitHub Actions workflow
-└── requirements.txt
-```
-
-## Cost Considerations (AI Descriptions)
+## Cost (AI Descriptions Only)
 
 | Model | Cost per 200 measures | Notes |
-|-------|----------------------|-------|
-| Claude Sonnet 4 | ~$0.89 | Recommended for cost efficiency |
-| Claude Haiku 3.5 | ~$0.10 | Faster, less nuanced descriptions |
+|---|---|---|
+| Claude Sonnet 4 | ~$0.89 | Recommended |
+| Claude Haiku 3.5 | ~$0.10 | Faster, less detailed |
 
-Persistent caching reduces costs by 80-90% on subsequent runs (only new/changed measures hit the API).
+Descriptions are cached — subsequent runs only process new or changed measures.
 
 ## License
 

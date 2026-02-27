@@ -23,6 +23,13 @@ def _sanitize_name(name: str | None) -> str:
         .replace("'", "")
         .replace("#", "")
         .replace(";", "")
+        .replace("%", "pct")
+        .replace("&", "and")
+        .replace("+", "plus")
+        .replace("@", "at")
+        .replace("=", "_")
+        .replace("{", "")
+        .replace("}", "")
     )
 
 
@@ -106,9 +113,10 @@ def generate_table_diagram(
     lines = ["erDiagram"]
     for rel in relevant:
         cardinality = "||--o{" if rel.is_active else "||..o{"
+        label = _sanitize_label(rel.from_column)
         lines.append(
             f"    {_sanitize_name(rel.to_table)} {cardinality} "
-            f"{_sanitize_name(rel.from_table)} : \"{rel.from_column}\""
+            f"{_sanitize_name(rel.from_table)} : \"{label}\""
         )
 
     return "\n".join(lines)

@@ -2,6 +2,9 @@
 
 import json
 import logging
+import os
+import stat
+import sys
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 
@@ -14,8 +17,27 @@ DEFAULT_SETTINGS_PATH = Path(__file__).resolve().parent.parent.parent / ".app_se
 class AppSettings:
     """User settings persisted between sessions."""
 
+    # Platform: "github" or "azure_devops"
+    platform: str = "github"
+
+    # GitHub settings
     github_repo_url: str = ""
     github_token: str = ""
+
+    # Azure DevOps settings
+    azure_devops_url: str = ""
+    azure_devops_org_url: str = ""
+    azure_devops_token: str = ""
+    azure_devops_repo_name: str = ""
+    azure_project_mode: str = "existing"
+    new_project_name: str = ""
+
+    # Repository mode: "existing" or "new"
+    repo_mode: str = "existing"
+    new_repo_name: str = ""
+    new_repo_private: bool = True
+
+    # Common settings
     anthropic_api_key: str = ""
     ai_model: str = "claude-sonnet-4-20250514"
     server_command: str = "python pbixray-mcp-server/src/pbixray_server.py"
@@ -46,7 +68,14 @@ def save_settings(settings: AppSettings, path: Path | None = None) -> None:
     if not settings.save_secrets:
         data.pop("anthropic_api_key", None)
         data.pop("github_token", None)
+        data.pop("azure_devops_token", None)
     settings_path.write_text(
         json.dumps(data, indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
+    # Restrict file permissions when secrets are stored
+    if settings.save_secrets and sys.platform != "win32":
+        try:
+            os.chmod(settings_path, stat.S_IRUSR | stat.S_IWUSR)  # 600
+        except OSError:
+            logger.debug("Could not restrict settings file permissions")

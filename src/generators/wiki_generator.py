@@ -16,6 +16,7 @@ from .pages import (
     generate_relationships_page,
     generate_data_sources_page,
     generate_sidebar,
+    generate_order_file,
 )
 
 logger = logging.getLogger(__name__)
@@ -32,6 +33,7 @@ class WikiGenerator:
         anthropic_api_key: str | None = None,
         ai_model: str = "claude-sonnet-4-20250514",
         cache_path: str | Path | None = None,
+        platform: str = "github",
     ):
         """
         Args:
@@ -41,6 +43,7 @@ class WikiGenerator:
             anthropic_api_key: Anthropic API key (or set ANTHROPIC_API_KEY env var).
             ai_model: Claude model for AI enrichment.
             cache_path: Path for persistent AI description cache.
+            platform: Target wiki platform ('github' or 'azure_devops').
         """
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -49,6 +52,7 @@ class WikiGenerator:
         self.anthropic_api_key = anthropic_api_key
         self.ai_model = ai_model
         self.cache_path = cache_path
+        self.platform = platform
 
         # Populated after generate() runs — used by multi-model generator
         self.metadata: ModelMetadata | None = None
@@ -142,22 +146,29 @@ class WikiGenerator:
 
         # Generate all pages
         p = page_prefix
-        self._write_page(f"{p}Home", generate_home_page(metadata, page_prefix=p))
+        plat = self.platform
+        self._write_page(f"{p}Home", generate_home_page(metadata, page_prefix=p, platform=plat))
 
         for table in metadata.tables:
             slug = slugify(table.name)
             self._write_page(
                 f"{p}Table-{slug}",
-                generate_table_page(table, metadata.measures, metadata.relationships, page_prefix=p),
+                generate_table_page(table, metadata.measures, metadata.relationships, page_prefix=p, platform=plat),
             )
 
-        self._write_page(f"{p}Measures", generate_measures_page(metadata.measures, page_prefix=p))
+        self._write_page(f"{p}Measures", generate_measures_page(metadata.measures, page_prefix=p, platform=plat))
         self._write_page(
             f"{p}Relationships",
-            generate_relationships_page(metadata.relationships, metadata.tables, page_prefix=p),
+            generate_relationships_page(metadata.relationships, metadata.tables, page_prefix=p, platform=plat),
         )
-        self._write_page(f"{p}Data-Sources", generate_data_sources_page(metadata.power_query, page_prefix=p))
-        self._write_page(f"{p}_Sidebar", generate_sidebar(metadata, page_prefix=p))
+        self._write_page(f"{p}Data-Sources", generate_data_sources_page(metadata.power_query, page_prefix=p, platform=plat))
+        self._write_page(f"{p}_Sidebar", generate_sidebar(metadata, page_prefix=p, platform=plat))
+
+        # Azure DevOps Wiki uses .order file for sidebar page ordering
+        if plat == "azure_devops":
+            order_content = generate_order_file(metadata, page_prefix=p)
+            (self.output_dir / ".order").write_text(order_content, encoding="utf-8")
+            logger.debug("Wrote .order file for Azure DevOps Wiki")
 
         page_count = 5 + len(metadata.tables)
         logger.info(f"Wiki generated: {page_count} pages in {self.output_dir}")

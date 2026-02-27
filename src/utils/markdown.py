@@ -53,7 +53,10 @@ class MarkdownHelper:
         return "\n".join(lines)
 
     @staticmethod
-    def code_block(code: str, language: str = "") -> str:
+    def code_block(code: str, language: str = "", platform: str = "github") -> str:
+        # Azure DevOps Wiki uses ::: mermaid / ::: syntax for diagrams
+        if language == "mermaid" and platform == "azure_devops":
+            return f"::: mermaid\n{code}\n:::"
         return f"```{language}\n{code}\n```"
 
     @staticmethod

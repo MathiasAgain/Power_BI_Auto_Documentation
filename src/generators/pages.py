@@ -12,7 +12,23 @@ def slugify(text: str) -> str:
     return text.lower().replace(" ", "-").replace("_", "-").replace("/", "-").replace("\\", "-")
 
 
-def generate_home_page(metadata: ModelMetadata, page_prefix: str = "") -> str:
+def _wiki_link(display: str, page_slug: str, platform: str = "github") -> str:
+    """Generate a wiki link in the correct syntax for the target platform.
+
+    GitHub Wiki:       [[display text|page-slug]]
+    Azure DevOps Wiki: [display text](/page-slug)
+    """
+    if platform == "azure_devops":
+        return f"[{display}](/{page_slug})"
+    return f"[[{display}|{page_slug}]]"
+
+
+def _mermaid_block(code: str, platform: str = "github") -> str:
+    """Generate a mermaid code block in the correct syntax for the target platform."""
+    return md.code_block(code, "mermaid", platform=platform)
+
+
+def generate_home_page(metadata: ModelMetadata, page_prefix: str = "", platform: str = "github") -> str:
     """Generate the wiki Home page with model overview and navigation."""
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     p = page_prefix
@@ -23,7 +39,7 @@ def generate_home_page(metadata: ModelMetadata, page_prefix: str = "") -> str:
 
     # Navigation links to individual table pages
     table_links = "\n".join(
-        f"- [[{t.name}|{p}Table-{slugify(t.name)}]]"
+        f"- {_wiki_link(t.name, f'{p}Table-{slugify(t.name)}', platform)}"
         for t in sorted(metadata.tables, key=lambda t: t.name)
     )
 
@@ -38,6 +54,10 @@ def generate_home_page(metadata: ModelMetadata, page_prefix: str = "") -> str:
         summary_rows.append(["Model Size", f"{size_mb:.1f} MB"])
 
     summary_table = md.table(["Metric", "Value"], summary_rows)
+
+    measures_link = _wiki_link("All Measures", f"{p}Measures", platform)
+    rel_link = _wiki_link("Relationships", f"{p}Relationships", platform)
+    ds_link = _wiki_link("Data Sources", f"{p}Data-Sources", platform)
 
     return f"""# {metadata.name} - Semantic Model Documentation
 
@@ -55,9 +75,9 @@ def generate_home_page(metadata: ModelMetadata, page_prefix: str = "") -> str:
 
 ### Other Pages
 
-- [[All Measures|{p}Measures]]
-- [[Relationships|{p}Relationships]]
-- [[Data Sources|{p}Data-Sources]]
+- {measures_link}
+- {rel_link}
+- {ds_link}
 
 ---
 
@@ -71,6 +91,7 @@ def generate_table_page(
     measures: list[Measure],
     relationships: list[Relationship],
     page_prefix: str = "",
+    platform: str = "github",
 ) -> str:
     """Generate a documentation page for a single table."""
     p = page_prefix
@@ -104,13 +125,15 @@ def generate_table_page(
     table_diagram = generate_table_diagram(table.name, relationships)
     diagram_section = ""
     if table_diagram:
-        diagram_section = f"\n## Relationships\n\n{md.code_block(table_diagram, 'mermaid')}\n"
+        diagram_section = f"\n## Relationships\n\n{_mermaid_block(table_diagram, platform)}\n"
 
     description = f"\n_{table.description}_\n" if table.description else ""
 
     row_info = ""
     if table.row_count is not None:
         row_info = f"\n**Row count:** {table.row_count:,}\n"
+
+    back_link = _wiki_link("\u2190 Back to Home", f"{p}Home", platform)
 
     return f"""# {table.name}
 {description}{row_info}
@@ -121,11 +144,11 @@ def generate_table_page(
 
 ---
 
-[[← Back to Home|{p}Home]]
+{back_link}
 """
 
 
-def generate_measures_page(measures: list[Measure], page_prefix: str = "") -> str:
+def generate_measures_page(measures: list[Measure], page_prefix: str = "", platform: str = "github") -> str:
     """Generate consolidated DAX measures reference page."""
     p = page_prefix
 
@@ -159,9 +182,10 @@ def generate_measures_page(measures: list[Measure], page_prefix: str = "") -> st
     dep_graph = generate_measure_dependency_graph(measures)
     if dep_graph:
         content += "---\n\n## Measure Dependencies\n\n"
-        content += md.code_block(dep_graph, "mermaid") + "\n"
+        content += _mermaid_block(dep_graph, platform) + "\n"
 
-    content += f"\n---\n\n[[← Back to Home|{p}Home]]\n"
+    back_link = _wiki_link("\u2190 Back to Home", f"{p}Home", platform)
+    content += f"\n---\n\n{back_link}\n"
     return content
 
 
@@ -169,6 +193,7 @@ def generate_relationships_page(
     relationships: list[Relationship],
     tables: list[Table],
     page_prefix: str = "",
+    platform: str = "github",
 ) -> str:
     """Generate relationships page with ER diagram and detail table."""
     p = page_prefix
@@ -177,7 +202,7 @@ def generate_relationships_page(
 
     content = "# Model Relationships\n\n"
     content += "## Entity Relationship Diagram\n\n"
-    content += md.code_block(er_diagram, "mermaid") + "\n\n"
+    content += _mermaid_block(er_diagram, platform) + "\n\n"
 
     # Detail table
     content += "## Relationship Details\n\n"
@@ -203,11 +228,12 @@ def generate_relationships_page(
     content += f"- **Active:** {active_count}\n"
     content += f"- **Inactive:** {inactive_count}\n"
 
-    content += f"\n---\n\n[[← Back to Home|{p}Home]]\n"
+    back_link = _wiki_link("\u2190 Back to Home", f"{p}Home", platform)
+    content += f"\n---\n\n{back_link}\n"
     return content
 
 
-def generate_data_sources_page(power_query: dict[str, str], page_prefix: str = "") -> str:
+def generate_data_sources_page(power_query: dict[str, str], page_prefix: str = "", platform: str = "github") -> str:
     """Generate data sources page from Power Query/M code."""
     p = page_prefix
 
@@ -222,28 +248,51 @@ def generate_data_sources_page(power_query: dict[str, str], page_prefix: str = "
             content += f"## {query_name}\n\n"
             content += md.code_block(query_code, "powerquery") + "\n\n"
 
-    content += f"\n---\n\n[[← Back to Home|{p}Home]]\n"
+    back_link = _wiki_link("\u2190 Back to Home", f"{p}Home", platform)
+    content += f"\n---\n\n{back_link}\n"
     return content
 
 
-def generate_sidebar(metadata: ModelMetadata, page_prefix: str = "") -> str:
-    """Generate GitHub Wiki _Sidebar.md navigation.
+def generate_sidebar(metadata: ModelMetadata, page_prefix: str = "", platform: str = "github") -> str:
+    """Generate wiki sidebar/navigation.
+
+    GitHub Wiki: _Sidebar.md with [[link|page]] syntax.
+    Azure DevOps Wiki: .order file controls page ordering (generated separately).
 
     Args:
         metadata: Model metadata.
         page_prefix: Optional prefix for multi-model wikis (e.g. 'SalesModel-').
+        platform: 'github' or 'azure_devops'.
     """
     p = page_prefix
 
     sidebar = "**Navigation**\n\n"
-    sidebar += f"- [[Home|{p}Home]]\n"
-    sidebar += f"- [[Measures|{p}Measures]]\n"
-    sidebar += f"- [[Relationships|{p}Relationships]]\n"
-    sidebar += f"- [[Data Sources|{p}Data-Sources]]\n\n"
+    sidebar += f"- {_wiki_link('Home', f'{p}Home', platform)}\n"
+    sidebar += f"- {_wiki_link('Measures', f'{p}Measures', platform)}\n"
+    sidebar += f"- {_wiki_link('Relationships', f'{p}Relationships', platform)}\n"
+    sidebar += f"- {_wiki_link('Data Sources', f'{p}Data-Sources', platform)}\n\n"
     sidebar += "**Tables**\n\n"
 
     for table in sorted(metadata.tables, key=lambda t: t.name):
         slug = slugify(table.name)
-        sidebar += f"- [[{table.name}|{p}Table-{slug}]]\n"
+        sidebar += f"- {_wiki_link(table.name, f'{p}Table-{slug}', platform)}\n"
 
     return sidebar
+
+
+def generate_order_file(metadata: ModelMetadata, page_prefix: str = "") -> str:
+    """Generate an Azure DevOps Wiki .order file to control sidebar page ordering.
+
+    Returns the content as a string (one page name per line, no .md extension).
+    """
+    p = page_prefix
+    lines = [
+        f"{p}Home",
+        f"{p}Measures",
+        f"{p}Relationships",
+        f"{p}Data-Sources",
+    ]
+    for table in sorted(metadata.tables, key=lambda t: t.name):
+        slug = slugify(table.name)
+        lines.append(f"{p}Table-{slug}")
+    return "\n".join(lines) + "\n"

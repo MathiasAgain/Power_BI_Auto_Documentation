@@ -31,6 +31,7 @@ class MultiModelWikiGenerator:
         enrich_with_ai: bool = False,
         anthropic_api_key: str | None = None,
         ai_model: str = "claude-sonnet-4-20250514",
+        platform: str = "github",
     ):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -38,6 +39,7 @@ class MultiModelWikiGenerator:
         self.enrich_with_ai = enrich_with_ai
         self.anthropic_api_key = anthropic_api_key
         self.ai_model = ai_model
+        self.platform = platform
         self.models: list[ProcessedModel] = []
 
     async def generate(
@@ -76,6 +78,7 @@ class MultiModelWikiGenerator:
                 anthropic_api_key=self.anthropic_api_key,
                 ai_model=self.ai_model,
                 cache_path=cache_path,
+                platform=self.platform,
             )
 
             try:

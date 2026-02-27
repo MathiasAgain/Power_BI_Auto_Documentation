@@ -45,6 +45,12 @@ def main():
         help="Path to AI description cache file (default: <output>/.ai_cache.json)",
     )
     parser.add_argument(
+        "--platform",
+        choices=["github", "azure_devops"],
+        default="github",
+        help="Target wiki platform (default: github). Affects link syntax and mermaid rendering.",
+    )
+    parser.add_argument(
         "--discover",
         action="store_true",
         help="List available MCP server tools and exit",
@@ -74,6 +80,7 @@ def main():
         enrich_with_ai=args.ai_descriptions,
         ai_model=args.ai_model,
         cache_path=args.cache_path,
+        platform=args.platform,
     )
 
     try:

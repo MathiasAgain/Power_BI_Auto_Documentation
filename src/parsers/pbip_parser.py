@@ -196,18 +196,20 @@ class PBIPParser:
         measures: list[Measure] = []
 
         # Parse table files
+        power_query: dict[str, str] = {}
         tables_dir = definition_dir / "tables"
         if tables_dir.is_dir():
             for tmdl_file in sorted(tables_dir.glob("*.tmdl")):
-                table, table_measures = self._parse_tmdl_table(tmdl_file)
+                table, table_measures, table_pq = self._parse_tmdl_table(tmdl_file)
                 tables.append(table)
                 measures.extend(table_measures)
+                power_query.update(table_pq)
 
         # Parse relationships
         relationships = self._parse_tmdl_relationships(definition_dir / "relationships.tmdl")
 
-        # Parse expressions (Power Query)
-        power_query = self._parse_tmdl_expressions(definition_dir / "expressions.tmdl")
+        # Parse expressions.tmdl (shared M expressions, if present)
+        power_query.update(self._parse_tmdl_expressions(definition_dir / "expressions.tmdl"))
 
         logger.info(f"TMDL parsed: {len(tables)} tables, {len(measures)} measures, {len(relationships)} relationships")
 
@@ -220,8 +222,8 @@ class PBIPParser:
             power_query=power_query,
         )
 
-    def _parse_tmdl_table(self, tmdl_path: Path) -> tuple[Table, list[Measure]]:
-        """Parse a single table .tmdl file. Returns (Table, list of Measures)."""
+    def _parse_tmdl_table(self, tmdl_path: Path) -> tuple[Table, list[Measure], dict[str, str]]:
+        """Parse a single table .tmdl file. Returns (Table, list of Measures, power_query dict)."""
         text = tmdl_path.read_text(encoding="utf-8-sig")
         lines = text.splitlines()
 
@@ -230,6 +232,7 @@ class PBIPParser:
         table_desc = ""
         columns: list[Column] = []
         measures: list[Measure] = []
+        power_query: dict[str, str] = {}
 
         i = 0
         while i < len(lines):
@@ -276,6 +279,13 @@ class PBIPParser:
                 measures.append(meas)
                 continue
 
+            # M partition (Power Query expression)
+            elif stripped.startswith("partition ") and stripped.endswith("= m"):
+                expr, i = self._parse_tmdl_partition_m(lines, i)
+                if expr:
+                    power_query[table_name] = expr
+                continue
+
             i += 1
 
         table = Table(
@@ -284,15 +294,21 @@ class PBIPParser:
             is_hidden=table_hidden,
             description=table_desc,
         )
-        return table, measures
+        return table, measures, power_query
 
     def _parse_tmdl_column(
         self, lines: list[str], start: int, table_name: str, description: str = ""
     ) -> tuple[Column, int]:
         """Parse a column declaration and its properties. Returns (Column, next line index)."""
         line = lines[start].strip()
-        # column 'Name' or column Name
-        name = self._unquote(line[7:].strip())
+        # Calculated columns: column 'Name' = Expression
+        # Regular columns:    column 'Name'
+        col_part = line[7:].strip()
+        match = re.match(r"(.+?)\s*=\s*", col_part)
+        if match:
+            name = self._unquote(match.group(1).strip())
+        else:
+            name = self._unquote(col_part)
         data_type = "unknown"
         is_hidden = False
         indent = self._indent_level(lines[start])
@@ -385,6 +401,49 @@ class PBIPParser:
             is_hidden=is_hidden,
             display_folder=display_folder,
         ), i
+
+    def _parse_tmdl_partition_m(
+        self, lines: list[str], start: int
+    ) -> tuple[str, int]:
+        """Parse an M partition block and extract the Power Query expression.
+
+        Returns (expression, next line index).
+        """
+        indent = self._indent_level(lines[start])
+        expression = ""
+
+        i = start + 1
+        while i < len(lines):
+            l = lines[i]
+            if not l.strip():
+                i += 1
+                continue
+            if self._indent_level(l) <= indent:
+                break
+            prop = l.strip()
+            if prop.startswith("source"):
+                # source = <expression> or source = \n <multi-line>
+                match = re.match(r"source\s*=\s*(.*)", prop)
+                if match:
+                    first_line = match.group(1).strip()
+                    i += 1
+                    expr_lines = [first_line] if first_line else []
+                    source_indent = self._indent_level(l)
+                    while i < len(lines):
+                        el = lines[i]
+                        if not el.strip():
+                            expr_lines.append("")
+                            i += 1
+                            continue
+                        if self._indent_level(el) <= source_indent:
+                            break
+                        expr_lines.append(el.strip())
+                        i += 1
+                    expression = "\n".join(expr_lines).strip()
+                    continue
+            i += 1
+
+        return expression, i
 
     def _parse_tmdl_relationships(self, rel_path: Path) -> list[Relationship]:
         """Parse relationships.tmdl file."""
